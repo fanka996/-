@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>药品过期管家</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&family=Space+Mono:wght@400;700&display=swap');
+  :root {
+    --bg:#F2EDE6;--surface:#FAFAF7;--surface2:#EDEAE3;
+    --primary:#2D5016;--primary-light:#4A7C28;
+    --accent:#E8773A;--accent2:#C94F1B;
+    --warn:#D4A017;--danger:#C0392B;--safe:#27AE60;
+    --text:#1A1A1A;--text2:#5A5A5A;--text3:#9A9A9A;
+    --border:#D5D0C8;
+    --shadow:0 2px 16px rgba(0,0,0,.08);
+    --shadow-lg:0 8px 32px rgba(0,0,0,.12);
+    --radius:16px;--radius-sm:10px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  body{font-family:'Noto Sans SC',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;max-width:480px;margin:0 auto;padding-bottom:80px}
+
+  /* HEADER */
+  .header{background:var(--primary);color:white;padding:20px 20px 24px;position:relative;overflow:hidden}
+  .header::before{content:'';position:absolute;top:-40px;right:-40px;width:160px;height:160px;border-radius:50%;background:rgba(255,255,255,.06)}
+  .header::after{content:'';position:absolute;bottom:-20px;left:40px;width:80px;height:80px;border-radius:50%;background:rgba(255,255,255,.04)}
+  .header-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
+  .app-logo{display:flex;align-items:center;gap:10px}
+  .logo-icon{width:38px;height:38px;background:var(--accent);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:20px}
+  .app-name{font-size:17px;font-weight:700;letter-spacing:.5px}
+  .app-sub{font-size:10px;opacity:.65;font-family:'Space Mono',monospace}
+  .header-date{text-align:right;font-family:'Space Mono',monospace;font-size:11px;opacity:.7}
+  .stats-row{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+  .stat-card{background:rgba(255,255,255,.12);border-radius:12px;padding:12px;text-align:center}
+  .stat-num{font-size:26px;font-weight:700;font-family:'Space Mono',monospace;line-height:1}
+  .stat-num.danger{color:#FF6B5B}.stat-num.warn{color:#FFD166}.stat-num.safe{color:#A8E063}
+  .stat-label{font-size:11px;opacity:.75;margin-top:4px}
+
+  /* CONTENT */
+  .content{padding:16px}
+  .section-title{font-size:12px;font-weight:700;color:var(--text2);letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;margin-top:18px}
+
+  /* ALERT */
+  .alert-banner{background:linear-gradient(135deg,#FFF3E0,#FFE0B2);border:1.5px solid #FFCC80;border-radius:var(--radius-sm);padding:11px 13px;display:flex;align-items:center;gap:10px;margin-bottom:10px}
+  .alert-banner.danger-banner{background:linear-gradient(135deg,#FFEBEE,#FFCDD2);border-color:#EF9A9A}
+  .alert-banner span{font-size:18px}
+  .alert-text{font-size:13px;font-weight:500;color:#5D2B00}
+  .alert-banner.danger-banner .alert-text{color:#5D0000}
+
+  /* SEARCH */
+  .search-bar{display:flex;align-items:center;background:var(--surface);border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:10px 13px;gap:8px;margin-bottom:12px;box-shadow:var(--shadow)}
+  .search-bar input{flex:1;border:none;background:none;font-size:14px;font-family:'Noto Sans SC',sans-serif;color:var(--text);outline:none}
+  .search-bar input::placeholder{color:var(--text3)}
+
+  /* FILTER */
+  .filter-row{display:flex;gap:7px;overflow-x:auto;padding-bottom:4px;margin-bottom:12px;scrollbar-width:none}
+  .filter-row::-webkit-scrollbar{display:none}
+  .filter-chip{white-space:nowrap;padding:6px 14px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;border:1.5px solid var(--border);background:var(--surface);color:var(--text2);transition:all .15s}
+  .filter-chip.active{background:var(--primary);border-color:var(--primary);color:white}
+
+  /* MED CARDS */
+  .med-list{display:flex;flex-direction:column;gap:9px}
+  .med-card{background:var(--surface);border-radius:var(--radius);padding:13px 15px;display:flex;align-items:center;gap:11px;box-shadow:var(--shadow);border-left:4px solid transparent;cursor:pointer;transition:transform .15s,box-shadow .15s;position:relative;overflow:hidden}
+  .med-card:active{transform:scale(.98)}
+  .med-card.expired{border-left-color:var(--danger)}.med-card.expiring{border-left-color:var(--warn)}.med-card.safe{border-left-color:var(--safe)}
+  .med-icon{width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0}
+  .med-icon.expired{background:#FFEBEE}.med-icon.expiring{background:#FFF8E1}.med-icon.safe{background:#E8F5E9}
+  .med-info{flex:1;min-width:0}
+  .med-name{font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .med-detail{font-size:12px;color:var(--text2);margin-top:2px}
+  .med-barcode{font-family:'Space Mono',monospace;font-size:10px;color:var(--text3);margin-top:3px}
+  .med-status{text-align:right;flex-shrink:0}
+  .status-badge{display:inline-block;padding:4px 9px;border-radius:20px;font-size:11px;font-weight:700;font-family:'Space Mono',monospace}
+  .badge-expired{background:#FFEBEE;color:var(--danger)}.badge-expiring{background:#FFF8E1;color:#B8860B}.badge-safe{background:#E8F5E9;color:#1B5E20}
+  .days-left{font-size:11px;color:var(--text3);margin-top:3px}
+  .delete-btn{position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;font-size:17px;cursor:pointer;opacity:0;transition:opacity .2s;padding:8px}
+  .med-card:hover .delete-btn{opacity:1}
+
+  /* EMPTY */
+  .empty-state{text-align:center;padding:40px 20px;color:var(--text3)}
+  .empty-state .empty-icon{font-size:48px;margin-bottom:12px}
+  .empty-state p{font-size:14px;line-height:1.7}
+
+  /* BOTTOM NAV */
+  .bottom-nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:480px;background:var(--surface);border-top:1px solid var(--border);display:flex;padding:8px 0 12px;z-index:100;box-shadow:0 -4px 20px rgba(0,0,0,.08)}
+  .nav-item{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer;padding:6px;transition:opacity .2s}
+  .nav-item.active .nav-icon{color:var(--primary)}.nav-item.active .nav-label{color:var(--primary);font-weight:600}
+  .nav-icon{font-size:21px;color:var(--text3);transition:color .2s;position:relative}
+  .nav-label{font-size:10px;color:var(--text3);transition:color .2s}
+  .scan-btn-wrap{flex:1;display:flex;align-items:center;justify-content:center}
+  .scan-fab{width:56px;height:56px;background:var(--primary);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:24px;cursor:pointer;box-shadow:0 4px 16px rgba(45,80,22,.4);transition:transform .15s,box-shadow .15s;margin-top:-22px;border:3px solid var(--bg)}
+  .scan-fab:active{transform:scale(.93);box-shadow:0 2px 8px rgba(45,80,22,.3)}
+  .notif-dot{position:absolute;top:-2px;right:-4px;width:8px;height:8px;background:var(--danger);border-radius:50%;border:2px solid var(--surface);display:none}
+
+  /* PAGES */
+  .page{display:none}.page.active{display:block}
+
+  /* MODAL */
+  .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:200;align-items:flex-end;justify-content:center}
+  .modal-overlay.open{display:flex}
+  .modal{background:var(--surface);border-radius:24px 24px 0 0;width:100%;max-width:480px;padding:18px 18px 32px;animation:slideUp .3s ease;max-height:90vh;overflow-y:auto}
+  @keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
+  .modal-handle{width:40px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 18px}
+  .modal-title{font-size:17px;font-weight:700;margin-bottom:18px;display:flex;align-items:center;gap:8px}
+
+  /* FORM */
+  .form-group{margin-bottom:14px}
+  .form-label{font-size:12px;font-weight:600;color:var(--text2);margin-bottom:5px;display:block;letter-spacing:.4px}
+  .form-input{width:100%;padding:11px 13px;background:var(--surface2);border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:14px;font-family:'Noto Sans SC',sans-serif;color:var(--text);outline:none;transition:border-color .2s}
+  .form-input:focus{border-color:var(--primary)}
+  .form-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .emoji-picker{display:flex;gap:7px;flex-wrap:wrap}
+  .emoji-opt{width:40px;height:40px;border-radius:10px;border:2px solid var(--border);background:var(--surface2);font-size:19px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s}
+  .emoji-opt.selected{border-color:var(--primary);background:#E8F5E0}
+  .btn{width:100%;padding:14px;border-radius:var(--radius-sm);border:none;font-size:15px;font-weight:700;font-family:'Noto Sans SC',sans-serif;cursor:pointer;transition:all .15s;letter-spacing:.4px}
+  .btn:active{transform:scale(.98)}
+  .btn-primary{background:var(--primary);color:white}
+  .btn-secondary{background:var(--surface2);color:var(--text);margin-top:8px}
+  .btn-danger{background:#FFEBEE;color:var(--danger);margin-top:8px}
+
+  /* SCANNER FULLSCREEN */
+  .scanner-modal{display:none;position:fixed;inset:0;background:#000;z-index:300;flex-direction:column}
+  .scanner-modal.open{display:flex}
+  .scanner-header{padding:44px 18px 16px;display:flex;align-items:center;gap:12px;background:rgba(0,0,0,.75);backdrop-filter:blur(10px)}
+  .back-btn{width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.15);border:none;color:white;font-size:17px;cursor:pointer;display:flex;align-items:center;justify-content:center}
+  .scanner-title{color:white;font-size:16px;font-weight:600}
+  .scanner-body{flex:1;position:relative;overflow:hidden}
+  #live-scanner{position:absolute;inset:0}
+  #live-scanner video{width:100%!important;height:100%!important;object-fit:cover}
+  #live-scanner canvas{display:none!important}
+  .live-scan-overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none}
+  .live-scan-frame{width:280px;height:130px;border:none;border-radius:10px;position:relative;box-shadow:0 0 0 9999px rgba(0,0,0,.55)}
+  .corner{position:absolute;width:22px;height:22px}
+  .corner-tl{top:0;left:0;border-top:3px solid var(--accent);border-left:3px solid var(--accent);border-radius:5px 0 0 0}
+  .corner-tr{top:0;right:0;border-top:3px solid var(--accent);border-right:3px solid var(--accent);border-radius:0 5px 0 0}
+  .corner-bl{bottom:0;left:0;border-bottom:3px solid var(--accent);border-left:3px solid var(--accent);border-radius:0 0 0 5px}
+  .corner-br{bottom:0;right:0;border-bottom:3px solid var(--accent);border-right:3px solid var(--accent);border-radius:0 0 5px 0}
+  .live-scan-line{position:absolute;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--accent),transparent);animation:scanMove 2s ease-in-out infinite}
+  @keyframes scanMove{0%,100%{top:8%}50%{top:86%}}
+  .scanner-tip{color:rgba(255,255,255,.8);font-size:13px;margin-top:18px;text-align:center}
+  .scanner-footer{padding:16px 18px 28px;background:rgba(0,0,0,.75)}
+  .manual-input-row{display:flex;gap:8px}
+  .manual-input{flex:1;background:rgba(255,255,255,.15);border:1.5px solid rgba(255,255,255,.2);border-radius:10px;padding:12px 13px;color:white;font-size:14px;font-family:'Space Mono',monospace;outline:none}
+  .manual-input::placeholder{color:rgba(255,255,255,.4)}
+  .manual-input:focus{border-color:var(--accent)}
+  .confirm-btn{background:var(--accent);color:white;border:none;border-radius:10px;padding:12px 16px;font-size:14px;font-weight:700;cursor:pointer;white-space:nowrap;font-family:'Noto Sans SC',sans-serif}
+
+  /* SETTINGS */
+  .settings-section{background:var(--surface);border-radius:var(--radius);overflow:hidden;margin-bottom:14px;box-shadow:var(--shadow)}
+  .settings-item{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--border);cursor:pointer}
+  .settings-item:last-child{border-bottom:none}
+  .settings-item-left{display:flex;align-items:center;gap:11px}
+  .settings-item-icon{width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:17px}
+  .si-green{background:#E8F5E9}.si-orange{background:#FFF3E0}.si-red{background:#FFEBEE}.si-blue{background:#E3F2FD}
+  .settings-item-text{font-size:14px;font-weight:500}
+  .settings-item-sub{font-size:12px;color:var(--text3);margin-top:1px}
+  .settings-arrow{color:var(--text3);font-size:16px}
+
+  /* TOAST */
+  .toast{position:fixed;top:20px;left:50%;transform:translateX(-50%) translateY(-80px);background:#1A1A1A;color:white;padding:11px 18px;border-radius:30px;font-size:13px;font-weight:500;z-index:9999;transition:transform .3s ease;white-space:nowrap;max-width:90vw}
+  .toast.show{transform:translateX(-50%) translateY(0)}
+</style>
+</head>
+<body>
+
+<div class="toast" id="toast"></div>
+
+<!-- Scanner Fullscreen -->
+<div class="scanner-modal" id="scannerModal">
+  <div class="scanner-header">
+    <button class="back-btn" onclick="closeScanner()">✕</button>
+    <span class="scanner-title">扫描条形码</span>
+  </div>
+  <div class="scanner-body">
+    <div id="live-scanner"></div>
+    <div class="live-scan-overlay">
+      <div class="live-scan-frame">
+        <div class="corner corner-tl"></div>
+        <div class="corner corner-tr"></div>
+        <div class="corner corner-bl"></div>
+        <div class="corner corner-br"></div>
+        <div class="live-scan-line"></div>
+      </div>
+      <p class="scanner-tip">将条形码对准框内扫描</p>
+    </div>
+  </div>
+  <div class="scanner-footer">
+    <div class="manual-input-row">
+      <input class="manual-input" id="manualBarcode" type="text" inputmode="numeric" placeholder="或手动输入条形码编号..." />
+      <button class="confirm-btn" onclick="confirmBarcode()">确认</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add Medicine Modal -->
+<div class="modal-overlay" id="addModal">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-title">💊 添加药品</div>
+    <div class="form-group">
+      <label class="form-label">药品名称 *</label>
+      <input class="form-input" id="medName" type="text" placeholder="例：布洛芬缓释胶囊" />
+    </div>
+    <div class="form-group">
+      <label class="form-label">选择图标</label>
+      <div class="emoji-picker" id="emojiPicker">
+        <div class="emoji-opt selected" data-emoji="💊" onclick="selectEmoji(this)">💊</div>
+        <div class="emoji-opt" data-emoji="🩺" onclick="selectEmoji(this)">🩺</div>
+        <div class="emoji-opt" data-emoji="🌡️" onclick="selectEmoji(this)">🌡️</div>
+        <div class="emoji-opt" data-emoji="💉" onclick="selectEmoji(this)">💉</div>
+        <div class="emoji-opt" data-emoji="🧴" onclick="selectEmoji(this)">🧴</div>
+        <div class="emoji-opt" data-emoji="🧪" onclick="selectEmoji(this)">🧪</div>
+        <div class="emoji-opt" data-emoji="🌿" onclick="selectEmoji(this)">🌿</div>
+        <div class="emoji-opt" data-emoji="💧" onclick="selectEmoji(this)">💧</div>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">过期日期 *</label>
+        <input class="form-input" id="medExpiry" type="date" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">数量</label>
+        <input class="form-input" id="medQty" type="text" placeholder="例：1盒" />
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">条形码</label>
+      <input class="form-input" id="medBarcode" type="text" placeholder="扫描后自动填入 / 手动输入" readonly style="background:#F5F5F0;font-family:'Space Mono',monospace;font-size:12px;" />
+    </div>
+    <div class="form-group">
+      <label class="form-label">备注</label>
+      <input class="form-input" id="medNote" type="text" placeholder="例：家庭常备、儿童专用..." />
+    </div>
+    <button class="btn btn-primary" onclick="saveMedicine()">✓ 保存药品</button>
+    <button class="btn btn-secondary" onclick="closeAddModal()">取消</button>
+  </div>
+</div>
+
+<!-- Delete Confirm Modal -->
+<div class="modal-overlay" id="deleteModal">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-title">🗑️ 删除确认</div>
+    <p style="color:var(--text2);font-size:14px;line-height:1.7;margin-bottom:20px">确定要删除 <strong id="deleteTarget"></strong> 吗？此操作不可撤销。</p>
+    <button class="btn btn-danger" onclick="confirmDelete()">确认删除</button>
+    <button class="btn btn-secondary" onclick="closeDeleteModal()">取消</button>
+  </div>
+</div>
+
+<!-- Header -->
+<div class="header">
+  <div class="header-top">
+    <div class="app-logo">
+      <div class="logo-icon">💊</div>
+      <div>
+        <div class="app-name">药品过期管家</div>
+        <div class="app-sub">MEDICINE TRACKER</div>
+      </div>
+    </div>
+    <div class="header-date" id="headerDate"></div>
+  </div>
+  <div class="stats-row">
+    <div class="stat-card"><div class="stat-num danger" id="statExpired">0</div><div class="stat-label">🔴 已过期</div></div>
+    <div class="stat-card"><div class="stat-num warn" id="statExpiring">0</div><div class="stat-label">🟡 即将到期</div></div>
+    <div class="stat-card"><div class="stat-num safe" id="statSafe">0</div><div class="stat-label">🟢 正常</div></div>
+  </div>
+</div>
+
+<!-- Pages -->
+<div class="page active" id="pageHome">
+  <div class="content">
+    <div id="alertBanners"></div>
+    <div class="search-bar">
+      <span style="font-size:15px;color:var(--text3)">🔍</span>
+      <input type="text" placeholder="搜索药品名称、条形码..." id="searchInput" oninput="renderList()" />
+    </div>
+    <div class="filter-row">
+      <div class="filter-chip active" data-filter="all" onclick="setFilter(this)">全部</div>
+      <div class="filter-chip" data-filter="expired" onclick="setFilter(this)">已过期</div>
+      <div class="filter-chip" data-filter="expiring" onclick="setFilter(this)">即将到期</div>
+      <div class="filter-chip" data-filter="safe" onclick="setFilter(this)">状态正常</div>
+    </div>
+    <div class="med-list" id="medList"></div>
+  </div>
+</div>
+
+<div class="page" id="pageStats">
+  <div class="content">
+    <div class="section-title">📊 库存概览</div>
+    <div id="statsContent"></div>
+  </div>
+</div>
+
+<div class="page" id="pageSettings">
+  <div class="content">
+    <div class="section-title">⚙️ 设置与管理</div>
+    <div class="settings-section">
+      <div class="settings-item" onclick="exportData()">
+        <div class="settings-item-left"><div class="settings-item-icon si-blue">📤</div><div><div class="settings-item-text">导出数据</div><div class="settings-item-sub">保存为 JSON 文件备份</div></div></div>
+        <span class="settings-arrow">›</span>
+      </div>
+      <div class="settings-item" onclick="document.getElementById('importFile').click()">
+        <div class="settings-item-left"><div class="settings-item-icon si-green">📥</div><div><div class="settings-item-text">导入数据</div><div class="settings-item-sub">从 JSON 文件恢复记录</div></div></div>
+        <span class="settings-arrow">›</span>
+      </div>
+      <input type="file" id="importFile" accept=".json" style="display:none" onchange="importData(event)" />
+    </div>
+    <div class="settings-section">
+      <div class="settings-item" onclick="clearExpired()">
+        <div class="settings-item-left"><div class="settings-item-icon si-orange">🧹</div><div><div class="settings-item-text">清除已过期药品</div><div class="settings-item-sub">删除所有过期记录</div></div></div>
+        <span class="settings-arrow">›</span>
+      </div>
+      <div class="settings-item" onclick="clearAll()">
+        <div class="settings-item-left"><div class="settings-item-icon si-red">⚠️</div><div><div class="settings-item-text">清空所有数据</div><div class="settings-item-sub">不可恢复，请谨慎操作</div></div></div>
+        <span class="settings-arrow">›</span>
+      </div>
+    </div>
+    <div class="settings-section">
+      <div class="settings-item">
+        <div class="settings-item-left"><div class="settings-item-icon si-green">ℹ️</div><div><div class="settings-item-text">关于本应用</div><div class="settings-item-sub">药品过期管家 v1.0 · 数据本地存储</div></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Bottom Nav -->
+<div class="bottom-nav">
+  <div class="nav-item active" id="navHome" onclick="switchPage('Home')">
+    <span class="nav-icon">🏠</span><span class="nav-label">首页</span>
+  </div>
+  <div class="nav-item" id="navStats" onclick="switchPage('Stats')">
+    <span class="nav-icon">📊</span><span class="nav-label">统计</span>
+  </div>
+  <div class="scan-btn-wrap">
+    <div class="scan-fab" onclick="openScanner()">📷</div>
+  </div>
+  <div class="nav-item" id="navSettings" onclick="switchPage('Settings')">
+    <span class="nav-icon">⚙️<span class="notif-dot" id="notifDot"></span></span><span class="nav-label">设置</span>
+  </div>
+  <div class="nav-item" onclick="openAddModal()">
+    <span class="nav-icon">➕</span><span class="nav-label">手动添加</span>
+  </div>
+</div>
+
+<script>
+let medicines = JSON.parse(localStorage.getItem('medicines')||'[]');
+let currentFilter = 'all';
+let deleteTargetId = null;
+let selectedEmoji = '💊';
+let scannerRunning = false;
+
+function today(){ return new Date().toISOString().split('T')[0]; }
+function daysUntilExpiry(d){ const e=new Date(d),n=new Date(); n.setHours(0,0,0,0); e.setHours(0,0,0,0); return Math.floor((e-n)/86400000); }
+function getStatus(d){ const v=daysUntilExpiry(d); return v<0?'expired':v<=30?'expiring':'safe'; }
+function formatDate(d){ const dt=new Date(d); return `${dt.getFullYear()}年${dt.getMonth()+1}月${dt.getDate()}日`; }
+
+function save(){
+  localStorage.setItem('medicines',JSON.stringify(medicines));
+  updateStats(); renderAlerts(); renderList(); renderStats();
+}
+
+function updateStats(){
+  const c={expired:0,expiring:0,safe:0};
+  medicines.forEach(m=>c[getStatus(m.expiry)]++);
+  document.getElementById('statExpired').textContent=c.expired;
+  document.getElementById('statExpiring').textContent=c.expiring;
+  document.getElementById('statSafe').textContent=c.safe;
+  document.getElementById('notifDot').style.display=c.expired>0?'block':'none';
+  const t=new Date();
+  document.getElementById('headerDate').innerHTML=`${t.getFullYear()}/${String(t.getMonth()+1).padStart(2,'0')}/${String(t.getDate()).padStart(2,'0')}<br>共 ${medicines.length} 种药品`;
+}
+
+function renderAlerts(){
+  const exp=medicines.filter(m=>getStatus(m.expiry)==='expired');
+  const exg=medicines.filter(m=>getStatus(m.expiry)==='expiring');
+  let h='';
+  if(exp.length) h+=`<div class="alert-banner danger-banner"><span>🚨</span><div class="alert-text">有 ${exp.length} 种药品已过期，请及时处理！</div></div>`;
+  if(exg.length) h+=`<div class="alert-banner"><span>⚠️</span><div class="alert-text">${exg.length} 种药品将在 30 天内过期，请注意查看。</div></div>`;
+  document.getElementById('alertBanners').innerHTML=h;
+}
+
+function renderList(){
+  const q=document.getElementById('searchInput').value.toLowerCase();
+  let list=medicines.filter(m=>{
+    const mf=currentFilter==='all'||getStatus(m.expiry)===currentFilter;
+    const ms=!q||m.name.toLowerCase().includes(q)||(m.barcode||'').includes(q);
+    return mf&&ms;
+  });
+  list.sort((a,b)=>new Date(a.expiry)-new Date(b.expiry));
+  const el=document.getElementById('medList');
+  if(!list.length){ el.innerHTML=`<div class="empty-state"><div class="empty-icon">📭</div><p>暂无药品记录<br>点击下方 📷 扫码或 ➕ 手动添加</p></div>`; return; }
+  el.innerHTML=list.map(m=>{
+    const st=getStatus(m.expiry), days=daysUntilExpiry(m.expiry);
+    const badge=st==='expired'?'<span class="status-badge badge-expired">已过期</span>':st==='expiring'?'<span class="status-badge badge-expiring">即将到期</span>':'<span class="status-badge badge-safe">正常</span>';
+    const dtext=st==='expired'?`超期 ${Math.abs(days)} 天`:`还剩 ${days} 天`;
+    return `<div class="med-card ${st}">
+      <div class="med-icon ${st}">${m.emoji||'💊'}</div>
+      <div class="med-info">
+        <div class="med-name">${m.name}</div>
+        <div class="med-detail">过期：${formatDate(m.expiry)}${m.qty?' · '+m.qty:''}${m.note?' · '+m.note:''}</div>
+        ${m.barcode?`<div class="med-barcode">🔢 ${m.barcode}</div>`:''}
+      </div>
+      <div class="med-status">${badge}<div class="days-left">${dtext}</div></div>
+      <button class="delete-btn" onclick="askDelete(event,'${m.id}','${m.name.replace(/'/g,'')}')">🗑️</button>
+    </div>`;
+  }).join('');
+}
+
+function renderStats(){
+  const el=document.getElementById('statsContent');
+  if(!medicines.length){ el.innerHTML=`<div class="empty-state"><div class="empty-icon">📊</div><p>还没有药品数据</p></div>`; return; }
+  const c={expired:0,expiring:0,safe:0};
+  medicines.forEach(m=>c[getStatus(m.expiry)]++);
+  const sorted=medicines.slice().sort((a,b)=>new Date(a.expiry)-new Date(b.expiry)).slice(0,5);
+  el.innerHTML=`
+    <div class="settings-section">
+      <div class="settings-item"><div class="settings-item-left"><div class="settings-item-icon si-red">🔴</div><div><div class="settings-item-text">已过期</div></div></div><strong style="color:var(--danger)">${c.expired} 种</strong></div>
+      <div class="settings-item"><div class="settings-item-left"><div class="settings-item-icon si-orange">🟡</div><div><div class="settings-item-text">30天内到期</div></div></div><strong style="color:var(--warn)">${c.expiring} 种</strong></div>
+      <div class="settings-item"><div class="settings-item-left"><div class="settings-item-icon si-green">🟢</div><div><div class="settings-item-text">状态正常</div></div></div><strong style="color:var(--safe)">${c.safe} 种</strong></div>
+      <div class="settings-item"><div class="settings-item-left"><div class="settings-item-icon si-blue">💊</div><div><div class="settings-item-text">药品总数</div></div></div><strong>${medicines.length} 种</strong></div>
+    </div>
+    <div class="section-title">📋 最近到期</div>
+    <div class="med-list">${sorted.map(m=>{
+      const st=getStatus(m.expiry),days=daysUntilExpiry(m.expiry);
+      const badge=st==='expired'?'<span class="status-badge badge-expired">过期</span>':st==='expiring'?'<span class="status-badge badge-expiring">即将</span>':'<span class="status-badge badge-safe">正常</span>';
+      return `<div class="med-card ${st}"><div class="med-icon ${st}">${m.emoji||'💊'}</div><div class="med-info"><div class="med-name">${m.name}</div><div class="med-detail">${formatDate(m.expiry)}</div></div><div class="med-status">${badge}<div class="days-left">${days<0?'超期'+Math.abs(days)+'天':'剩'+days+'天'}</div></div></div>`;
+    }).join('')}</div>`;
+}
+
+function switchPage(name){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  document.getElementById('page'+name).classList.add('active');
+  document.getElementById('nav'+name)?.classList.add('active');
+  if(name==='Stats') renderStats();
+}
+
+function setFilter(el){
+  document.querySelectorAll('.filter-chip').forEach(c=>c.classList.remove('active'));
+  el.classList.add('active');
+  currentFilter=el.dataset.filter;
+  renderList();
+}
+
+function openScanner(){
+  document.getElementById('scannerModal').classList.add('open');
+  document.getElementById('manualBarcode').value='';
+  startScanner();
+}
+function closeScanner(){ stopScanner(); document.getElementById('scannerModal').classList.remove('open'); }
+
+function startScanner(){
+  if(scannerRunning) return;
+  Quagga.init({
+    inputStream:{ name:"Live",type:"LiveStream",target:document.querySelector('#live-scanner'),constraints:{ facingMode:"environment",width:{ideal:1280},height:{ideal:720} } },
+    decoder:{ readers:["ean_reader","ean_8_reader","code_128_reader","code_39_reader","upc_reader","upc_e_reader"] },
+    locate:true
+  },err=>{
+    if(err){ showToast('⚠️ 无法访问摄像头，请检查权限或手动输入'); return; }
+    Quagga.start(); scannerRunning=true;
+  });
+  Quagga.offDetected();
+  Quagga.onDetected(data=>{
+    const code=data.codeResult.code;
+    if(code){ stopScanner(); document.getElementById('scannerModal').classList.remove('open'); onBarcodeDetected(code); }
+  });
+}
+function stopScanner(){ if(!scannerRunning) return; try{Quagga.stop();}catch(e){} scannerRunning=false; }
+function confirmBarcode(){
+  const v=document.getElementById('manualBarcode').value.trim();
+  if(!v){ showToast('请输入条形码'); return; }
+  stopScanner(); document.getElementById('scannerModal').classList.remove('open'); onBarcodeDetected(v);
+}
+function onBarcodeDetected(code){
+  showToast('✅ 已识别：'+code);
+  document.getElementById('medBarcode').value=code;
+  openAddModal();
+}
+
+function openAddModal(){
+  document.getElementById('addModal').classList.add('open');
+  const d=new Date(); d.setFullYear(d.getFullYear()+1);
+  document.getElementById('medExpiry').value=d.toISOString().split('T')[0];
+}
+function closeAddModal(){
+  document.getElementById('addModal').classList.remove('open');
+  ['medName','medExpiry','medQty','medBarcode','medNote'].forEach(id=>document.getElementById(id).value='');
+  selectedEmoji='💊';
+  document.querySelectorAll('.emoji-opt').forEach(e=>e.classList.remove('selected'));
+  document.querySelector('.emoji-opt[data-emoji="💊"]').classList.add('selected');
+}
+function selectEmoji(el){
+  document.querySelectorAll('.emoji-opt').forEach(e=>e.classList.remove('selected'));
+  el.classList.add('selected'); selectedEmoji=el.dataset.emoji;
+}
+function saveMedicine(){
+  const name=document.getElementById('medName').value.trim();
+  const expiry=document.getElementById('medExpiry').value;
+  if(!name){ showToast('请输入药品名称'); return; }
+  if(!expiry){ showToast('请选择过期日期'); return; }
+  medicines.push({ id:Date.now().toString(), name, expiry, emoji:selectedEmoji,
+    qty:document.getElementById('medQty').value.trim(),
+    barcode:document.getElementById('medBarcode').value.trim(),
+    note:document.getElementById('medNote').value.trim(), addedAt:today() });
+  save(); closeAddModal(); showToast('✅ 药品已添加');
+}
+
+function askDelete(e,id,name){
+  e.stopPropagation(); deleteTargetId=id;
+  document.getElementById('deleteTarget').textContent=name;
+  document.getElementById('deleteModal').classList.add('open');
+}
+function closeDeleteModal(){ document.getElementById('deleteModal').classList.remove('open'); deleteTargetId=null; }
+function confirmDelete(){ medicines=medicines.filter(m=>m.id!==deleteTargetId); save(); closeDeleteModal(); showToast('🗑️ 已删除'); }
+
+function exportData(){
+  const blob=new Blob([JSON.stringify(medicines,null,2)],{type:'application/json'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`medicines_${today()}.json`; a.click();
+  showToast('📤 导出成功');
+}
+function importData(e){
+  const f=e.target.files[0]; if(!f) return;
+  const r=new FileReader();
+  r.onload=ev=>{
+    try{ const d=JSON.parse(ev.target.result); if(Array.isArray(d)){ medicines=d; save(); showToast('📥 导入成功，共 '+d.length+' 条'); } else showToast('❌ 格式错误'); }
+    catch{ showToast('❌ 解析失败'); }
+    e.target.value='';
+  };
+  r.readAsText(f);
+}
+function clearExpired(){
+  const n=medicines.filter(m=>getStatus(m.expiry)==='expired').length;
+  if(!n){ showToast('没有过期药品'); return; }
+  if(confirm(`确认删除 ${n} 种过期药品？`)){ medicines=medicines.filter(m=>getStatus(m.expiry)!=='expired'); save(); showToast(`🧹 已清除 ${n} 种过期药品`); }
+}
+function clearAll(){
+  if(confirm('确认清空所有数据？不可恢复！')){ medicines=[]; save(); showToast('已清空所有数据'); }
+}
+
+function showToast(msg){
+  const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'),2500);
+}
+
+// Demo data
+if(!medicines.length){
+  const add=n=>{ const d=new Date(); d.setDate(d.getDate()+n); return d.toISOString().split('T')[0]; };
+  medicines=[
+    {id:'1',name:'布洛芬缓释胶囊',expiry:add(-10),emoji:'💊',qty:'半盒',barcode:'6902007020177',note:'止痛退烧',addedAt:today()},
+    {id:'2',name:'感冒灵颗粒',expiry:add(15),emoji:'🌿',qty:'2盒',barcode:'6921027501188',note:'感冒备用',addedAt:today()},
+    {id:'3',name:'创可贴',expiry:add(200),emoji:'🩺',qty:'1盒',barcode:'6923370205614',note:'外伤处理',addedAt:today()},
+    {id:'4',name:'藿香正气水',expiry:add(420),emoji:'💧',qty:'3支',barcode:'6903146012345',note:'中暑备用',addedAt:today()},
+    {id:'5',name:'消炎片',expiry:add(-5),emoji:'💊',qty:'1板',barcode:'',note:'',addedAt:today()},
+  ];
+  save();
+}
+updateStats(); renderAlerts(); renderList();
+</script>
+</body>
+</html>
